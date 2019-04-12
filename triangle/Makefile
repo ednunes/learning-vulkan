@@ -7,8 +7,8 @@ Triangle: main.cpp
 
 .PHONY: test clean
 
-test: VulkanTest
-	LD_LIBRARY_PATH=$(VULKAN_SDK_PATH)/lib VK_LAYER_PATH=$(VULKAN_SDK_PATH)/etc/explicit_layer.d ./VulkanTest
+test: Triangle
+	LD_LIBRARY_PATH=$(VULKAN_SDK_PATH)/lib VK_LAYER_PATH=$(VULKAN_SDK_PATH)/etc/explicit_layer.d ./Triangle
 
 clean:
-	rm -f VulkanTest
+	rm -f Triangle 
