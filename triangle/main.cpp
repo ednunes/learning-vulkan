@@ -8,6 +8,7 @@
 #include <vector>
 #include <set>
 #include <cstring>
+#include <optional>
 
 const int WIDTH = 800;
 const int HEIGHT = 600;
@@ -22,6 +23,30 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
+VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
+    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    if (func != nullptr) {
+        return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+    } else {
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+}
+
+void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator) {
+	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+	if (func != nullptr) {
+		func(instance, debugMessenger, pAllocator);
+	}
+}
+
+struct QueueFamilyIndices {
+    std::optional<uint32_t> graphicsFamily;
+
+    bool isComplete() {
+        return graphicsFamily.has_value();
+    }
+};
+
 class HelloTriangleApplication {
 	public:
 		void run() {
@@ -35,6 +60,8 @@ class HelloTriangleApplication {
 		GLFWwindow* window;
 		VkInstance instance;
 		VkDebugUtilsMessengerEXT debugMessenger;
+	    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+
 
 		void initWindow(){
 			glfwInit();
@@ -48,7 +75,8 @@ class HelloTriangleApplication {
 		void createInstance(){
 			if (enableValidationLayers && !checkValidationLayerSupport()) {
 				throw std::runtime_error("validation layers requested, but not available!");
-			} 
+			}
+
 			VkApplicationInfo appInfo = {};
 			appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 			appInfo.pApplicationName = "Hello Triangle";
@@ -60,16 +88,6 @@ class HelloTriangleApplication {
 			VkInstanceCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 			createInfo.pApplicationInfo = &appInfo;
-
-			uint32_t glfwExtensionCount = 0;
-			const char** glfwExtensions;
-
-			glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-			createInfo.enabledExtensionCount = glfwExtensionCount;
-			createInfo.ppEnabledExtensionNames = glfwExtensions;
-
-			createInfo.enabledLayerCount = 0;
 
 			auto extensions = getRequiredExtensions();
 			createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
@@ -96,9 +114,9 @@ class HelloTriangleApplication {
 			vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
 			std::set<char const*> extensionNamesSet;
 
-			//std::cout << "Show all available extensions:" << std::endl;
+			std::cout << "Show all available extensions:" << std::endl;
 			for (const auto& extension : extensions) {
-				//std::cout << "\t" << extension.extensionName << std::endl;
+				std::cout << "\t" << extension.extensionName << std::endl;
 				extensionNamesSet.insert(extension.extensionName);
 			}
 
@@ -107,9 +125,9 @@ class HelloTriangleApplication {
 
 			std::vector<char const*> requiredExtensionsNotIncluded;
 
-			//std::cout << "Show all required extensions:" << std::endl;
+			std::cout << "Show all required extensions:" << std::endl;
 			for(const char** requiredExtension = requiredExtensionsList; *requiredExtension; ++requiredExtension){
-				//std::cout << "\t" <<  *requiredExtension << std::endl;
+				std::cout << "\t" <<  *requiredExtension << std::endl;
 				if(extensionNamesSet.find(*requiredExtension)!=extensionNamesSet.end()){
 					requiredExtensionsNotIncluded.push_back(*requiredExtension);
 				}
@@ -143,6 +161,60 @@ class HelloTriangleApplication {
 		void initVulkan() {
 			createInstance();
 			setupDebugMessenger();
+		    pickPhysicalDevice();
+		}
+
+		void pickPhysicalDevice(){
+			uint32_t deviceCount = 0;
+			vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+			if (deviceCount == 0) {
+			    throw std::runtime_error("failed to find GPUs with Vulkan support!");
+			}
+
+			std::vector<VkPhysicalDevice> devices(deviceCount);
+			vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+			for (const auto& device : devices) {
+				if (isDeviceSuitable(device)) {
+					physicalDevice = device;
+					break;
+				}
+			}
+
+			if (physicalDevice == VK_NULL_HANDLE) {
+				throw std::runtime_error("failed to find a suitable GPU!");
+			}
+		}
+
+		bool isDeviceSuitable(VkPhysicalDevice device) {
+		    QueueFamilyIndices indices = findQueueFamilies(device);
+
+		    return indices.isComplete();
+		}
+
+		QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
+			QueueFamilyIndices indices;
+			uint32_t queueFamilyCount = 0;
+			vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+			std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+			vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+			int i = 0;
+			for (const auto& queueFamily : queueFamilies) {
+				if (queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+					indices.graphicsFamily = i;
+				}
+
+				if (indices.isComplete()) {
+					break;
+				}
+
+				i++;
+			}
+
+			return indices;
 		}
 
 		void setupDebugMessenger() {
@@ -210,12 +282,6 @@ class HelloTriangleApplication {
 			}
 
 			return true;
-		}
-		void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator) {
-			auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-			if (func != nullptr) {
-				func(instance, debugMessenger, pAllocator);
-			}
 		}
 
 		static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
